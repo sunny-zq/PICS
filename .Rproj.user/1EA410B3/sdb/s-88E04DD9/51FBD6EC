@@ -1,0 +1,20 @@
+{
+    "collab_server" : "",
+    "contents" : "library(PICS)\n\ndata(TCGA)\nTCGA$geneexpr[1:5,1:5]\nTCGA$t[1:5]\nTCGA$d[1:5]\nTCGA$pathList[1]\n\nprefilter.results<-prefilter(data=TCGA$geneexpr, time=TCGA$t, status=TCGA$d, plist=TCGA$pathList)\nprefilter.results\n?selectGene\n\ngene.results<-selectGene(prefilter.results)\nhead(coef(path.results))\nstr(gene.results)\ngene.results@score[[1]]\ngene.results@geneSelected[[3]]\nhead(gene.results@fit$coef[[1]])\n\nhead(coef(gene.results)[[1]])\n\npath.results<-selectPath(gene.results)\npath.results\nhead(coef(path.results))\npredict(path.results)\npredicted[1:3]\n\nplot(path.results)\nplot(path.results, type=\"KM\")\nplot(path.results, type=\"ROC\")\nplot(path.results, type=\"HR\")\n\npackage?PICS\n?selectGene\n??PICS\n",
+    "created" : 1488241039046.000,
+    "dirty" : true,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "410179986",
+    "id" : "51FBD6EC",
+    "lastKnownWriteTime" : 1490016722,
+    "last_content_update" : 1490021111104,
+    "path" : "E:/Dr.Chung/package/test.R",
+    "project_path" : null,
+    "properties" : {
+    },
+    "relative_order" : 4,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}
