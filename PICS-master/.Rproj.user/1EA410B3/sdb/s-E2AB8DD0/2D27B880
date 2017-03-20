@@ -1,0 +1,20 @@
+{
+    "collab_server" : "",
+    "contents" : "\npredict.pls.cox<-\nfunction (object, newdata, scale.X = TRUE, scale.Y = TRUE, ...)\n{\n    if (missing(newdata))\n        stop(\"No new data available.\")\n    X <- object$X\n    Y <- object$Y\n    q <- ncol(Y)\n    p <- ncol(X)\n    if (length(dim(newdata)) == 2) {\n        if (ncol(newdata) != p)\n            stop(\"'newdata' must be a numeric matrix with ncol = \",\n                p, \" or a vector of length = \", p, \".\")\n    }\n    if (length(dim(newdata)) == 0) {\n        if (length(newdata) != p)\n            stop(\"'newdata' must be a numeric matrix with ncol = \",\n                p, \" or a vector of length = \", p, \".\")\n        dim(newdata) <- c(1, p)\n    }\n    ncomp <- object$ncomp\n    a <- object$loadings$X\n    b <- object$loadings$Y\n    c <- object$mat.c\n    if (scale.X) {\n        means.X <- attr(X, \"scaled:center\")\n    }\n    if (scale.Y) {\n        means.Y <- attr(Y, \"scaled:center\")\n    }\n    if (scale.X) {\n        sigma.X <- attr(X, \"scaled:scale\")\n    }\n    if (scale.Y) {\n        sigma.Y <- attr(Y, \"scaled:scale\")\n    }\n    newdata <- as.matrix(newdata)\n    ones <- matrix(rep(1, nrow(newdata)), ncol = 1)\n    B.hat <- array(0, dim = c(p, q, ncomp))\n    Y.hat <- array(0, dim = c(nrow(newdata), q, ncomp))\n    t.pred <- array(0, dim = c(nrow(newdata), ncomp))\n    for (h in 1:ncomp) {\n        W <- a[, 1:h] %*% solve(t(c[, 1:h]) %*% a[, 1:h])\n        B <- W %*% drop(t(b[, 1:h]))\n        if (scale.Y) {\n            B <- scale(B, center = FALSE, scale = 1/sigma.Y)\n        }\n        if (scale.X) {\n            B <- as.matrix(scale(t(B), center = FALSE, scale = sigma.X))\n        }\n        if (!scale.X) {\n            B <- as.matrix(t(B))\n        }\n        if (scale.X & scale.Y) {\n            intercept <- -scale(B, center = FALSE, scale = 1/means.X)\n            intercept <- matrix(apply(intercept, 1, sum) + means.Y,\n                nrow = 1)\n            Y.hat[, , h] <- newdata %*% t(B) + ones %*% intercept\n        }\n        if (scale.X & !scale.Y) {\n            intercept <- -scale(B, center = FALSE, scale = 1/means.X)\n            intercept <- matrix(apply(intercept, 1, sum), nrow = 1)\n            Y.hat[, , h] <- newdata %*% t(B) + ones %*% intercept\n        }\n        if (!scale.X & scale.Y) {\n            intercept <- -B\n            intercept <- matrix(apply(intercept, 1, sum) + means.Y,\n                nrow = 1)\n            Y.hat[, , h] <- newdata %*% t(B) + ones %*% intercept\n        }\n        if (!scale.X & !scale.Y) {\n            Y.hat[, , h] <- newdata %*% t(B)\n        }\n        if (!scale.X) {\n            t.pred[, h] <- newdata %*% W[, h]\n        }\n        if (scale.X) {\n            t.pred[, h] <- scale(newdata, center = means.X, scale = sigma.X) %*%\n                W[, h]\n        }\n        B.hat[, , h] <- B\n    }\n    rownames(t.pred) <- rownames(newdata)\n    colnames(t.pred) <- paste(\"dim\", c(1:ncomp), sep = \" \")\n    rownames(Y.hat) <- rownames(newdata)\n    colnames(Y.hat) <- colnames(Y)\n    return(invisible(list(predict = Y.hat, variates = t.pred, w=W,\n        B.hat = B.hat)))\n}\n\n",
+    "created" : 1488871526776.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "2628438035",
+    "id" : "2D27B880",
+    "lastKnownWriteTime" : 1488871621,
+    "last_content_update" : 1488871621410,
+    "path" : "C:/Users/sunze/Desktop/package_0209/v0307/PICS/R/predict_pls_cox.R",
+    "project_path" : "R/predict_pls_cox.R",
+    "properties" : {
+    },
+    "relative_order" : 3,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}
