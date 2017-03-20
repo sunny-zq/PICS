@@ -1,0 +1,20 @@
+{
+    "collab_server" : "",
+    "contents" : "rm( list=ls() )\ngraphics.off()\nlibrary(glmnet);library(survival);library(foreach);\nlibrary(plsRcox);library(survivalROC);\n\nsetwd(\"C:/Users/sunze/Dropbox/CancerGenomics/package/PICS\")\n## the following functions should NOT appear\nsource(\"R/correctp.cox.R\")\nsource(\"R/spls.cox.R\")\nsource(\"R/spls.dv.R\")\nsource(\"R/ust.R\")\nsource(\"R/pls.cox.R\")\nsource(\"R/predict.pls.cox.R\")\n\n## the following functions are MAIN functions\nsource(\"R/prefilter.R\")\nsource(\"R/selectGene.R\")\nsource(\"R/selectPath.R\")\nsource(\"R/pred.R\")\nsource(\"R/survivalCurve.R\")\nsource(\"R/survivalRoc.R\")\nsource(\"R/plotPathwayEffect.R\")\n\n## step 0: load the example data\nload(\"data/TCGA.RData\")\n\ntrain.list=prefilter( data=TCGA, time=t, status=d,\n                      p.cut=0.5, plist=path.list )\n\ngene.results=selectGene( data=train.list, fold=5, K=c(3,5), etas=c(0.1,0.9),seed=123)\n\npath.results=selectPath( gene.results, seed=123)\nprintPathResults(path.results)\n\npredicted=pred( path.results, newx=train.list, n=50 )\n\nsurvivalCurve(predicted)\n\nsurvivalRoc(predicted)\n\nplotPathwayEffect(path.results)\n\nsummary( coxph(Surv(predicted$time, predicted$status) ~ predicted$riskcat) )\n\n\n## the following is the code for pathway effect plot using ggplot2\nlibrary(PICS)\ndata(TCGA)\n\n\npath.results=selectPath( time=t, status=d, pathways=names(train.list),\n                         seed=123, score=gene.results$score)\n\npath.results<-path.results$path.beta\npath.results$path.beta[2]<-0.18\nbetas<-path.results[,2]\npaths<-path.results[,1]\nindex=coefs=list()\nmat=path.results[betas!=0,]\nlab1=gsub( \"KEGG_\", \"\", paths )\nlab2=gsub( \"_PATHWAY\", \"\", lab1 )\n\nfor(i in 1:length(paths)){\n  j=which( mat[,1]==paths[i] )\n  coefs[[i]]=mat[j,2]\n}\n\nnames(coefs)=lab2\no=rev(order(-sapply(coefs,max)))\ncoefs=coefs[o]\nlab2=names(coefs)\n\ncoefs=unique(coefs)\nlab2= unique(lab2)\nfor(i in 1:length(coefs)){\n  if(length(coefs[[i]])>1){\n    index[[i]]=rev(seq( i-0.1*length(coefs[[i]])+0.1, i , 0.1 ))\n  }\n  if(length(coefs[[i]])==1){index[[i]]=i}\n}\n\nindex.plot<- unlist(index)\ncoefs.plot<- exp(unlist(coefs))\npath.plot<-lab2\ndata.plot<- as.data.frame(cbind(index.plot,coefs.plot))\n\nggplot(data.plot,aes(x=index.plot,xend=index.plot,y=1,yend=coefs.plot))+\n  geom_segment()+coord_flip()+\n  scale_x_discrete(limits=path.plot)+\n  ggtitle(\"Hazard ratio\") +\n  theme_bw()+scale_y_continuous(expand = c(0, 0),limits= c(1 , max(data.plot$coefs.plot)+0.05))+\n  theme(axis.title.x=element_blank(),\n        axis.title.y=element_blank(),\n        plot.title =element_text(size=15, vjust=1,hjust=0.5))+\n  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),\n        panel.background = element_blank(), axis.line = element_line(colour = \"black\"))\n",
+    "created" : 1486767593859.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "2385769123",
+    "id" : "5F890D67",
+    "lastKnownWriteTime" : 1487096140,
+    "last_content_update" : 1487096140248,
+    "path" : "C:/Users/sunze/Desktop/package_0209/run0214(ggplot2).R",
+    "project_path" : null,
+    "properties" : {
+    },
+    "relative_order" : 1,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}
