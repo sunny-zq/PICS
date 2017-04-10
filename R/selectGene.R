@@ -20,95 +20,74 @@
 #' prefilter.results=prefilter( data=TCGA$geneexpr, time=TCGA$t, status=TCGA$d, plist=TCGA$pathList )
 #' gene.results=selectGene( prefilter.results )
 
+#nt:maximum number of latent variables to consider
+#se1: whether or not to use the 1se criteria for cv
+#method: auc or partial likelihood deviance
+#par:whether or not to do parallel computing
 setMethod(
   f="selectGene",
   signature="Prefiltered",
-  definition=function( object, fold=5, K=5, etas=seq(0.1,0.9,0.1), seed=123 ) {
+  definition=function( object, nt=5, etas=seq(0.1,0.9,0.1), fold=5, 
+  se1=TRUE, method="auc", par=FALSE, foldid=NULL, seed=123 ) {
 
-    time<-object@inputdata$time
-    status<-object@inputdata$status
+    t<-object@inputdata$time
+    d<-object@inputdata$status
+    n<-length(t)
     data<-object@xlist
     pathways<-object@inputdata$pathway
-
-    set.seed(seed)
-    n<-length(time)
-    cvfolds <- split(sample(n), rep(1:fold, length=n))
-    dimx<-unlist( lapply(data,function(x){ncol(as.matrix(x))}) )
-
+    dimx=unlist( lapply(data,function(x){ncol(as.matrix(x))}) )
+    
+    if(is.null(foldid)){
+    	set.seed(seed)
+		foldid = sample(rep(seq(1:fold), length=n))
+	}
+	
     k.opt<-eta.opt<-NULL
-    score<-genes<-beta<-spls.beta<-w<-list()
+    score<-genes<-beta<-w<-list()
 
     for(j in 1:length(pathways)){
+    	
       xx<-as.matrix( data[[j]],nrow=n,ncol=dimx[j] )
-      kmax<-min( K, ncol(xx) )
+      kmax<-min( nt, ncol(xx) )
 
-      if(kmax>1){
-        aucs <- foreach(i=1:length(etas),.combine='rbind') %do% {
-          suppressWarnings(cvi <- cv.coxsplsDR2(
-            data=list(x=xx,time=time,status=status),
-            nfold=fold, nt=kmax, eta=etas[i],
-            se=TRUE, givefold=cvfolds,
-            scaleX=TRUE, scaleY=FALSE ))
-            #plot.it=F, sclaleY=F ))
+	  cvs=cv_splscox(x=xx,t=t,d=d,foldid=foldid,K=kmax,eta.vec=etas,method=method,parallel=par)
+  	  
+  	  if(se1==TRUE){
+  	  	k.opt[j]=cvs$opt.k[2]
+      	eta.opt[j]=cvs$opt.eta[2] 
+      }	
+      ##if auc is used, this is the maximum auc criteria
+      ##if partial likelihood is used, this is the min deviance criteria
+  	  if(se1==FALSE){
+  	  	k.opt[j]=cvs$opt.k[1]
+      	eta.opt[j]=cvs$opt.eta[1] 
+      }	
+      
+  	  cox<-coxph(Surv(t,d)~1)
+      devres<-residuals(cox,type="deviance")
 
-          cbind( cvi$cv.error10, cvi$cv.se10	)
-        }
-
-        h<-which.max(aucs[,1])
-        se1<-aucs[h,1]-aucs[h,2]
-
-        ###find aucs within 1se of the maximum
-        mat<-cbind( aucs, rep(0:kmax,length(etas)),
-                   rep(etas,each=(kmax+1)) )[aucs[,1]>se1,]
-
-        tmp<-aucs[,1][aucs[,1]>se1]
-
-        if(length(tmp)>1){
-          ##choose the most parsimonious model in terms of genes
-          ##always choose the smallest k among those with largest eta
-          q<-which.max(mat[,4])
-          k.opt[j] <- mat[q,3]
-          eta.opt[j] <- mat[q,4]
-        }
-
-        if(length(tmp)==1){
-          k.opt[j]<-mat[3]
-          eta.opt[j]<-mat[4]
-        }
-
-        cox<-coxph(Surv(time, status) ~ 1)
-        devres<-residuals(cox,type="deviance")
-
-        spls.mod<-spls.cox (x=xx, y=devres, K=k.opt[j], eta=eta.opt[j],
+      spls.mod<-spls.cox (x=xx, y=devres, K=k.opt[j], eta=eta.opt[j],
                            kappa=0.5, select="pls2", scale.x=T, scale.y=F, trace=F)
 
-        score[[j]]<- data.frame(spls.mod$plsmod$variates$X)
-        spls.beta[[j]]<-data.frame( colnames(xx),spls.mod$betahat )
-        rownames(spls.beta[[j]])<-NULL
-        colnames(spls.beta[[j]])<- c("gene","coef")
+      score[[j]]<- data.frame(spls.mod$plsmod$variates$X)
+      beta[[j]]<-data.frame( colnames(xx),spls.mod$betahat )
+      rownames(beta[[j]])<-NULL
 
-        ##objects saved for prediction
-        xA<-spls.mod$x[,spls.mod$A]
-        genes[[j]]<-colnames(xx)[spls.mod$A]
-        w[[j]]<-spls.mod$pred$w
+      ##objects saved for prediction
+      genes[[j]]<-colnames(xx)[spls.mod$A]
+      w[[j]]<-spls.mod$pred$w
 
-      }else{
-
-        score[[j]]<-xx
-        genes[[j]]<-names(xx)
-        spls.beta[[j]]<-NA
-        k.opt[j]<-1
-        eta.opt[j]<-w[[j]]<-NA
-      }
+	  print(sprintf("Interation: %d", j)) 
+	  flush.console()      
     }
 
     names(genes)<-pathways
-    names(spls.beta)<-pathways
+    names(beta)<-pathways
 
     methods::new( "FitGene",
       score=score,
       geneSelected=genes,
-      fit = list( coef=spls.beta, direction=w ),
+      fit = list( coef=beta, direction=w ),
       dataPrefiltered=data,
       inputdata = object@inputdata
     )
