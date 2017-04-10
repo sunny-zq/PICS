@@ -1,107 +1,124 @@
 #' @import rms plsRcox
 
-cv.coxsplsDR2=
-function (data, method = c("efron", "breslow"), nfold = 5, nt = 10,
-    eta = 0.5, se = TRUE, givefold, scaleX = TRUE, scaleY = FALSE )
-{
-    cv.error10 <- NULL
-    cv.se10 <- NULL
-    pred10<-NULL
+###cross validation by fixing eta
+###x: features
+###K: maximum number of latent variables allowed
+cv.eta=function( x, t, d, foldid, K, eta, method ){
+		
+	n=length(t)
+	nfold=max(foldid)
+	cvraw=matrix(NA,nrow=nfold,ncol=K)
+		
+	for(i in 1:nfold){
+		##training 
+   		o=which(foldid==i)
+   		cox=coxph(Surv(t[-o],d[-o])~1)
+     	res=residuals(cox,type="deviance")    			
+     	mod=spls.cox(x=x[-o,],y=res,K=K,eta=eta,
+       		kappa=0.5,scale.x=T,scale.y=F,trace=F) 
+       	A=mod$A		
+       	s=as.matrix(mod$plsmod$variates$X)
+       	
+        ##testing
+		pred=predict.pls.cox(mod$plsmod,newdata=scale(x[o,A], 								mod$meanx[A],mod$normx[A]),scale.X=F,scale.Y=F)
 
-    method <- match.arg(method)
-    x <- data$x
-    time <- data$time
-    status <- data$status
-    n <- length(time)
+		pred.full=predict.pls.cox(mod$plsmod,newdata=scale(x[,A], 							mod$meanx[A],mod$normx[A]),scale.X=F,scale.Y=F)
 
-    if (missing(givefold)) {
-        folds <- split(sample(seq(n)), rep(1:nfold, length = n))
-    }else {
-        folds <- givefold
-    }
-
-    show_nbr_var <-TRUE
-    errormat10<-matrix(NA, nt+1, nfold)
-
-    for (i in seq(nfold)) {
-        pred10=rep(NA, nt+1)
-        o <- folds[[i]]
-        tr <- list(x=x[-o, ], time=time[-o], status=status[-o])
-        ts <- list( x=x[o, ], time=time[o], status=status[o])
-
-        cox<-coxph(Surv(tr$time, tr$status) ~ 1)
-        devres<-residuals(cox,type="deviance")
-     	spls.mod<-spls.cox(x=tr$x, y=devres, K=nt, eta=eta,
-       kappa=0.5, select="pls2", scale.x=T, scale.y=F, trace=F)
-
-		sci<-data.frame(spls.mod$plsmod$variates$X)
-		wi<-spls.mod$pred$w
-		coeffit<-matrix(NA,nrow=nt,ncol=nt)
-		newAs<-list()
-		for(s in 1:nt){
-			coxfit=coxph(Surv(tr$time, tr$status)~as.matrix(sci)[,1:s])
-		    if(s==1){coeffit[1:s,s]=summary(coxfit)$coef[1]}
-		    if(s>1){coeffit[1:s,s]=summary(coxfit)$coef[,1]}
-		}
-
-        nzb <- cumsum(c(0, sapply(spls.mod$new2As, length)))
-
-        for (jj in 1:nt) {
-            Aval <- spls.mod$A
-            newxdata <- predict.pls.cox( spls.mod$plsmod, newdata=scale(ts$x[,Aval], 				spls.mod$meanx[Aval], spls.mod$normx[Aval]),scale.X=F, scale.Y=F)$variates[,1:jj, drop=F]
-
-            oldxdata <- sci[, 1:jj, drop=F]
-            allxdata <- predict.pls.cox( spls.mod$plsmod, newdata=scale(x[, Aval], 						spls.mod$meanx[Aval], spls.mod$normx[Aval]),scale.X=F, scale.Y=F)$variates[, 1:jj, drop=F]
-
-            if (jj == 1) {pred10[1]=0.5}
-
-            predict.trainvectjj <- as.matrix(oldxdata) %*% coeffit[1:jj, jj, drop=F]
-            predictvectjj <- as.matrix(newxdata) %*% coeffit[1:jj, jj, drop=F]
-            Xlp <- rep(NA, length(time))
-            Xlp[-o] <- predict.trainvectjj
-            Xlp[o] <- predictvectjj
-            tmp=as.data.frame(cbind(time=time, status=status, Xlp=Xlp))
-            TR <- tmp[-o, ]
-            TE <- tmp[o, ]
-
-            survival.time <- tmp[, "time"]
-            survival.status <- tmp[, "status"]
-
-            Surv.rsp <- Surv(tr$time, tr$status)
-            Surv.rsp.new <- Surv(ts$time, ts$status)
-            train.fit <- coxph(Surv(time, status) ~ Xlp, x = TRUE,
-                y = TRUE, method = method, data = TR, iter.max = 0,
-                init = 1)
-            train.fit.cph <- rms::cph(Surv(time, status) ~ Xlp, x = TRUE,
-                y = TRUE, method = method, data = TR, iter.max = 0,
-                init = 1)
-            lp <- predict(train.fit)
-            lpnew <- predict(train.fit, newdata = TE)
-
-            AUCs <- getIndicCViAUCSurvROCTest(lp, lpnew,
-                  Surv.rsp, Surv.rsp.new, times.auc = seq(0,
-                    max(time), length.out = 1000), times.prederr = seq(0,
-                    max(time), length.out = 1000)[-(990:1000)],
-                  train.fit, plot.it=F)
-
-            pred10[jj + 1] = AUCs$AUC_survivalROC.test$iauc
-        }
-        if (is.na(pred10[1])) {
-            pred10[1] <- 0.5
-        }
-        if (length(o) == 1) {
-            for (ind in 1:number_ind) {
-                assign(paste("pred", ind, sep = ""), matrix(get(paste("pred",
-                  ind, sep = "")), nrow = 1))
+		for(k in 1:K){
+			beta=NULL
+			s_minus_i=s[,1:k, drop=F]
+			fit=coxph(Surv(t[-o],d[-o])~s_minus_i)
+		    beta=summary(fit)$coef[,1]
+		    
+		    s_i=pred$variates[,1:k, drop=F]
+			sfull=pred.full$variates[,1:k, drop=F]
+            
+            if(method=="auc"){
+            	xlp <- rep(NA, n)
+       			xlp[-o] <- s_minus_i %*% beta
+            	xlp[o] <- s_i %*% beta 
+            
+            	AUCs <- getIndicCViAUCSurvROCTest(xlp[-o],xlp[o], 
+                  Surv.rsp=Surv(t[-o],d[-o]), 
+                  Surv.rsp.new=Surv(t[o],d[o]), 
+                  times.auc=seq(0,max(t),length.out=1000), 
+                  times.prederr=seq(0,max(t),length.out=1000)[-(990:1000)], 
+                  fit, plot.it=F)
+                  
+               cvraw[i,k]=AUCs$AUC_survivalROC.test$iauc
             }
-        }
+            
+            if(method=="plik"){
+            	pl_minus_i=-2*fit$loglik[2]	
+   			    plfull=-2*logplik(x=sfull,time=t,status=d,b=beta, 
+                  		return.all=F,method="efron" )	
+                  		    			
+     			cvraw[i,k]=plfull-pl_minus_i 
+            }
+        }   
+	}			
+    
+    if(method=="auc"){ 				
+    	cvm=apply(cvraw,2,mean,na.rm=TRUE)
+		cvsd=sqrt(apply(cvraw,2,var,na.rm=TRUE))/nfold
+	}
+	
+	if(method=="plik"){
+		weights=rep(1,n)
+		weights=as.vector( tapply(weights*d,foldid,sum) )
+		cvraw=cvraw/weights
+    	cvm=apply(cvraw,2,weighted.mean,w=weights)
+    	cvsd=sqrt( apply( scale(cvraw,cvm,F)^2, 2, weighted.mean,
+			 w=weights )/(nfold-1) )
+	}
+			 
+	result=cbind( cvm, cvsd, 1:K, rep(eta,K) )	
+	result
+ }
 
-        errormat10[, i] <- ifelse(is.finite(pred10), pred10, NA)
-    }
-
-        cv.error10<- apply(errormat10, 1, mean, na.rm = TRUE)
-        cv.se10<-sqrt(apply(errormat10, 1, var, na.rm = TRUE))/nfold
-
-        object <- list(nt = nt, cv.error10 = cv.error10, cv.se10 = cv.se10,
-            folds = folds, nzb = nzb)
+####cv both k and eta
+cv_splscox=function(x, t, d, foldid, K, eta.vec, method, parallel){
+	
+	if(parallel==T){
+		cvmat=foreach(i=1:length(eta.vec),.combine='rbind') %dopar% {
+			cv.eta(x=x,t=t,d=d,foldid=foldid,K=K,eta=eta.vec[i],method=method)}	
+	}
+	
+	if(parallel==F){
+		cvmat=foreach(i=1:length(eta.vec),.combine='rbind') %do% {
+			cv.eta(x=x,t=t,d=d,foldid=foldid,K=K,eta=eta.vec[i],method=method)}		
+	}
+	
+	opt.k=opt.eta=c(NA,NA)
+	
+	if(method=="auc"){
+		idx=which.max(cvmat[,1])
+		
+		opt.k[1]=cvmat[idx,3]
+ 	 	opt.eta[1]=cvmat[idx,4]
+ 	 	
+ 	 	se1=cvmat[idx,1]-cvmat[idx,2] 
+ 	 	mat=cvmat[cvmat[,1]>se1,,drop=F]
+ 	 	##choose the most parsimonious model in terms of genes
+   		##always choose the smallest k among those with largest eta
+ 	 	q=which.max(mat[,4])
+		opt.k[2]=mat[q,3]
+ 	 	opt.eta[2]=mat[q,4]
+ 	 }
+ 	 
+ 	if(method=="plik"){
+		idx=which.min(cvmat[,1])
+		
+		opt.k[1]=cvmat[idx,3]
+ 	 	opt.eta[1]=cvmat[idx,4]
+ 	 	
+ 	 	se1=cvmat[idx,1]+cvmat[idx,2] 
+ 	 	mat=cvmat[cvmat[,1]<se1,,drop=F]
+ 	 	##choose the most parsimonious model in terms of genes
+   		##always choose the smallest k among those with largest eta
+ 	 	q=which.max(mat[,4])
+		opt.k[2]=mat[q,3]
+ 	 	opt.eta[2]=mat[q,4]
+ 	 }
+	list(cvmat=cvmat,opt.k=opt.k,opt.eta=opt.eta)
 }
